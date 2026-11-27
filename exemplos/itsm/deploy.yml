@@ -1,0 +1,31 @@
+# PILOTO — como o CD do ITSM fica depois da migração.
+# Substitui o conteúdo atual de .github/workflows/deploy.yml no repositório itsm.
+#
+# A lógica de chamar o receptor (validação do SHA, header, exigência de HTTP 202)
+# saiu para o repositório de infra. Aqui fica só o gatilho — este workflow é o
+# único que sabe que o deploy do ITSM depende do CI do ITSM terminar verde.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    uses: LEMOSTECHIT/lemostech-infra/.github/workflows/cd-deploy-receptor.yml@v1
+    with:
+      sha: ${{ github.event.workflow_run.head_sha || github.sha }}
+      origem: itsm
+    secrets:
+      DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+      DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}

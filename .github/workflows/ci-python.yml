@@ -1,0 +1,92 @@
+# CI reutilizável para projetos Python.
+#
+# Chamado pelos repositórios das aplicações com `uses: .../ci-python.yml@v1`.
+# Só o que é comum mora aqui: instalar, lintar e testar. Caminho de código,
+# arquivo de dependências e comando de teste entram como input.
+#
+# Os inputs vão por `env` em vez de interpolados direto no `run:`. Assim um valor
+# com aspas, `$(...)` ou `;` nunca vira comando — só texto.
+name: CI Python
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Versão do Python (ex.: 3.12)"
+        type: string
+        default: "3.12"
+      requirements-file:
+        description: "Arquivo de dependências, relativo ao diretório de trabalho"
+        type: string
+        default: "requirements.txt"
+      working-directory:
+        description: "Diretório onde o projeto vive dentro do repositório"
+        type: string
+        default: "."
+      run-lint:
+        description: "Rodar ruff check e ruff format --check"
+        type: boolean
+        default: true
+      run-tests:
+        description: "Rodar a suíte de testes"
+        type: boolean
+        default: true
+      test-command:
+        description: "Comando de teste, sem cobertura"
+        type: string
+        default: "pytest -q"
+      coverage-min:
+        description: "Cobertura mínima em %. Zero desliga a medição"
+        type: number
+        default: 0
+      coverage-source:
+        description: "Pacote medido na cobertura (ex.: apps)"
+        type: string
+        default: ""
+      timeout-minutes:
+        description: "Tempo máximo do job"
+        type: number
+        default: 20
+
+jobs:
+  quality:
+    name: Qualidade
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    env:
+      REQ_FILE: ${{ inputs.requirements-file }}
+      COV_SOURCE: ${{ inputs.coverage-source }}
+      COV_MIN: ${{ inputs.coverage-min }}
+      TEST_CMD: ${{ inputs.test-command }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ inputs.requirements-file }}
+
+      - name: Instalar dependências
+        run: pip install -r "$REQ_FILE"
+
+      - name: Lint (ruff check)
+        if: ${{ inputs.run-lint }}
+        run: ruff check .
+
+      - name: Formato (ruff format --check)
+        if: ${{ inputs.run-lint }}
+        run: ruff format --check .
+
+      - name: Testes com cobertura
+        if: ${{ inputs.run-tests && inputs.coverage-min > 0 }}
+        run: pytest -q --cov="$COV_SOURCE" --cov-report=term-missing --cov-fail-under="$COV_MIN"
+
+      - name: Testes
+        if: ${{ inputs.run-tests && inputs.coverage-min == 0 }}
+        run: bash -c "$TEST_CMD"

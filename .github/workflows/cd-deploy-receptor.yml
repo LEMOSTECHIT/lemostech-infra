@@ -1,0 +1,68 @@
+# CD reutilizável: chama o receptor de deploy do servidor.
+#
+# O receptor vive em deploy.lemostech.dev.br e dispara o deploy no EasyPanel a
+# partir do próprio servidor. O webhook nativo do EasyPanel não serve aqui: pela
+# URL pública ele recusa a assinatura do GitHub (401 Invalid signature).
+#
+# Por que isso está centralizado: o protocolo (header, corpo, código 202, validação
+# do SHA) é igual para todas as aplicações. O que muda de app para app é o token,
+# que fica como secret no repositório da aplicação.
+name: CD Deploy Receptor
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: "Commit que será publicado. Só hexadecimal de 7 a 40 caracteres"
+        type: string
+        required: true
+      origem:
+        description: "Quem disparou o deploy, para o log do receptor"
+        type: string
+        default: "github-actions"
+    secrets:
+      DEPLOY_URL:
+        description: "URL do receptor (ex.: https://deploy.lemostech.dev.br/deploy)"
+        required: true
+      DEPLOY_SECRET:
+        description: "Segredo compartilhado com o receptor"
+        required: true
+
+jobs:
+  deploy:
+    name: Disparar deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validar e chamar o receptor
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+          # Valores de contexto entram por env; nunca interpolados no script.
+          SHA: ${{ inputs.sha }}
+          ORIGEM: ${{ inputs.origem }}
+        run: |
+          set -euo pipefail
+
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{7,40}$'; then
+            echo "::error::SHA inesperado: $SHA"
+            exit 1
+          fi
+
+          CORPO=$(printf '{"sha":"%s","origem":"%s"}' "$SHA" "$ORIGEM")
+
+          CODIGO=$(curl -sS -m 60 -o resposta.txt -w '%{http_code}' \
+            -X POST "$DEPLOY_URL" \
+            -H "X-Deploy-Secret: $DEPLOY_SECRET" \
+            -H 'Content-Type: application/json' \
+            -d "$CORPO")
+
+          echo "HTTP $CODIGO"
+          cat resposta.txt || true
+
+          if [ "$CODIGO" != "202" ]; then
+            echo "::error::receptor recusou o deploy (HTTP $CODIGO)"
+            exit 1
+          fi
+
+          echo "Deploy aceito pelo servidor; o build do EasyPanel roda em seguida."

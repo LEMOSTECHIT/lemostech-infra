@@ -1,0 +1,21 @@
+# Confere os próprios workflows com actionlint a cada mudança neste repositório.
+# Um erro de sintaxe aqui quebra o pipeline de todos os repositórios que chamam
+# estes workflows, então a checagem é obrigatória antes da tag.
+name: Lint dos workflows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rodar actionlint
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color

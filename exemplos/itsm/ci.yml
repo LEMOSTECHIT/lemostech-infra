@@ -1,0 +1,21 @@
+# PILOTO — como o CI do ITSM fica depois da migração.
+# Substitui o conteúdo atual de .github/workflows/ci.yml no repositório itsm.
+#
+# O que sai daqui: instalação de dependências, ruff e pytest com cobertura.
+# O que fica aqui: só o que é do ITSM (versão do Python, arquivo de requisitos,
+# pacote medido e piso de cobertura).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    uses: LEMOSTECHIT/lemostech-infra/.github/workflows/ci-python.yml@v1
+    with:
+      python-version: "3.12"
+      requirements-file: requirements.txt
+      coverage-source: apps
+      coverage-min: 70
